@@ -1,5 +1,7 @@
 from django.utils import timezone
+from webzmap import settings
 import os
+import sys
 import subprocess
 import time
 import datetime
@@ -13,6 +15,7 @@ class ZmapStatus(object):
         self.percent_complete = 0
         self.active_send_threads = 0
         self.sent_total = 0
+        self.hit_rate = 0
         self.sent_last_one_sec = 0
         self.sent_avg_per_sec = 0
         self.recv_success_total = 0
@@ -51,6 +54,31 @@ def get_last_line(path):
 
 
 def get_current_status(status_path):
+    """
+    real-time,
+    time-elapsed,
+    time-remaining,
+    percent-complete,
+    hit-rate,
+    active-send-threads,
+    sent-total,
+    sent-last-one-sec,
+    sent-avg-per-sec,
+    recv-success-total,
+    recv-success-last-one-sec,
+    recv-success-avg-per-sec,
+    recv-total,
+    recv-total-last-one-sec,
+    recv-total-avg-per-sec,
+    pcap-drop-total,
+    drop-last-one-sec,
+    drop-avg-per-sec,
+    sendto-fail-total,
+    sendto-fail-last-one-sec,
+    sendto-fail-avg-per-sec
+    :param status_path:
+    :return:
+    """
     try:
         line = get_last_line(status_path)
     except ShellExecuteError:
@@ -65,45 +93,48 @@ def get_current_status(status_path):
     status.time_elapsed = int(items[1])
     status.time_remaining = int(items[2])
     status.percent_complete = float(items[3])
-    status.active_send_threads = int(items[4])
-    status.sent_total = long(items[5])
-    status.sent_last_one_sec = int(items[6])
-    status.sent_avg_per_sec = int(items[7])
-    status.recv_success_total = long(items[8])
-    status.recv_success_last_one_sec = int(items[9])
-    status.recv_success_avg_per_sec = int(items[10])
-    status.recv_total = long(items[11])
-    status.recv_total_last_one_sec = int(items[12])
-    status.recv_total_avg_per_sec = int(items[13])
-    status.pcap_drop_total = long(items[14])
-    status.drop_last_one_sec = int(items[15])
-    status.drop_avg_per_sec = int(items[16])
-    status.sendto_fail_total = long(items[17])
-    status.sendto_fail_last_one_sec = int(items[18])
-    status.sendto_fail_avg_per_sec = int(items[19])
+    status.hit_rate = float(items[4])
+    status.active_send_threads = int(items[5])
+    status.sent_total = long(items[6])
+    status.sent_last_one_sec = int(items[7])
+    status.sent_avg_per_sec = int(items[8])
+    status.recv_success_total = long(items[9])
+    status.recv_success_last_one_sec = int(items[10])
+    status.recv_success_avg_per_sec = int(items[11])
+    status.recv_total = long(items[12])
+    status.recv_total_last_one_sec = int(items[13])
+    status.recv_total_avg_per_sec = int(items[14])
+    status.pcap_drop_total = long(items[15])
+    status.drop_last_one_sec = int(items[16])
+    status.drop_avg_per_sec = int(items[17])
+    status.sendto_fail_total = long(items[18])
+    status.sendto_fail_last_one_sec = int(items[19])
+    status.sendto_fail_avg_per_sec = int(items[20])
     return status
 
 
 class Zmap(object):
-    def __init__(self, execute_bin='zmap', verbosity=3, cwd=None):
+    def __init__(self, execute_bin='zmap', verbosity=3, cwd=None, logger=None):
         self.execute_bin = execute_bin
         self.verbosity = verbosity
         self.cwd = cwd
+        self.logger = logger
 
     def run_job(self, job):
         pass
 
-    def scan(self, port, subnets=None, output_path=None, log_path=None, bandwidth=2, white_list=None, black_list=None,
+    def scan(self, job, port, subnets=None, output_path=None, log_path=None, bandwidth=2, white_list=None, black_list=None,
              verbosity=None, status_updates_path=None, quiet=False, stdout=None, stderr=None):
         if verbosity:
             self.verbosity = verbosity
         cmd = "%s -p %s" % (self.execute_bin, port)
-        if output_path:
-            output_path = os.path.join(self.cwd, output_path)
-            create_parent_dir(output_path)
-            cmd += ' -o %s' % output_path
+        # if output_path:
+        #     output_path = os.path.join(self.cwd, output_path)
+        #     create_parent_dir(output_path)
+        #     cmd += ' -o %s' % output_path
         if bandwidth:
-            cmd += " -B %sM" % bandwidth
+            # cmd += " -B %sM" % bandwidth
+            cmd += " -r %s" % bandwidth
         if white_list:
             white_list = os.path.join(self.cwd, white_list)
             create_parent_dir(white_list)
@@ -125,11 +156,53 @@ class Zmap(object):
             cmd += ' ' + subnets
         if quiet:
             cmd += ' -q'
+        if self.logger:
+            self.logger.info("cmd is " + cmd)
         cmd = filter(lambda x: x.strip() != '', cmd.split(" "))
-        return subprocess.Popen(cmd, stderr=stderr, stdout=stdout, cwd=self.cwd)
+        r, w = os.pipe()
+        zmap_pid = subprocess.Popen(cmd, stdout=w, stderr=sys.stderr)
+        service = get_service(port)
+        zgrab_arg = [settings.zgrab2_path, service]
+        zgrab_pid = subprocess.Popen(zgrab_arg, stdin=r, stderr=sys.stderr)
+        self.logger.info("cmd is fuck")
+        return zmap_pid, zgrab_pid
+
+
+def get_service(port):
+    port_to_service = {
+        102: "siemens",
+        502: "modbus",
+        789: "crimson",
+        1911: "fox",
+        1962: "pcworx",
+        2404: "iec104",
+        9600: "omron",
+        20000: "dnp3",
+        20547: "proconos",
+        44818: "ethip",
+        47808: "bacnet",
+    }
+    return port_to_service[port]
 
 
 if __name__ == '__main__':
-    zmap = Zmap()
-    p = zmap.scan(port=80, output_path=None, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-    p.wait()
+    import signal
+    zmap = Zmap(logger=None)
+    p, q = zmap.scan(
+        job="ss",
+        subnets='118.25.94.0/24',
+        port=80,
+        stderr=None,
+        stdout=None,
+        quiet=False,
+        )
+    import time
+    p_exit_code = p.poll()
+    q_exit_code = q.poll()
+    while p_exit_code is None:
+        print(p.poll())
+        if p.poll() == 0:
+            q.send_signal(signal.SIGKILL)
+            break
+        time.sleep(2)
+

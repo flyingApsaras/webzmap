@@ -33,31 +33,35 @@ def execute_job(job_id):
     output_path = os.path.join(job_home_path, 'output.txt')
     log_path = os.path.join(job_home_path, 'job.log')
     status_path = os.path.join(job_home_path, 'status.txt')
-    zmap = Zmap(cwd=settings.cwd, execute_bin=settings.zmap_path)
-    process = zmap.scan(job.port, subnets=job.subnets, output_path=output_path, log_path=log_path,
-                        verbosity=job.verbosity, bandwidth=job.bandwidth, status_updates_path=status_path,
-                        stderr=open("/dev/null"))
-    job.pid = process.pid
+    zmap = Zmap(logger=logger)
+    zmap_process, zgrab_process = zmap.scan(job, job.port, subnets=job.subnets, output_path=output_path, log_path=log_path,
+        verbosity=job.verbosity, bandwidth=job.bandwidth, status_updates_path=status_path,
+        stderr=sys.stderr)
+    logger.info("ss: zmap scan ")
+    # create zmap scan process
+    job.pid = zmap_process.pid
     job.save()
-    exit_code = process.poll()
+    exit_code = zmap_process.poll()
     exit_by_user = False
     while exit_code is None:
-        # check job is deleted
+
         try:
             Job.objects.get(id=job.id)
         except Job.DoesNotExist:
-            process.send_signal(signal.SIGKILL)
+            zmap_process.send_signal(signal.SIGKILL)
+            zgrab_process.send_signal(signal.SIGKILL)  # kill zgrab2
             exit_by_user = True
             logger.info("stopped deleted job:id[%s] name[%s]", job.id, job.name)
             time.sleep(1)
-            exit_code = process.poll()
+            exit_code = zmap_process.poll()
             continue
         commands = Command.objects.filter(job=job, status=Command.STATUS_PENDING).order_by('creation_time')
         for command in commands:
             logger.info("execute command on job:[%s], type:%s", command.job.id, command.cmd)
             if command.cmd == Command.CMD_PAUSE:
                 if job.status == Job.STATUS_RUNNING:
-                    process.send_signal(signal.SIGSTOP)
+                    zmap_process.send_signal(signal.SIGSTOP)
+                    zgrab_process.send_signal(signal.SIGSTOP)
                     command.status = Command.STATUS_DONE
                     command.save()
                     job.status = Job.STATUS_PAUSED
@@ -67,7 +71,8 @@ def execute_job(job_id):
                     command.save()
             if command.cmd == Command.CMD_CONTINUE:
                 if job.status == Job.STATUS_PAUSED:
-                    process.send_signal(signal.SIGCONT)
+                    zmap_process.send_signal(signal.SIGCONT)
+                    zgrab_process.send_signal(signal.SIGCONT)
                     command.status = Command.STATUS_DONE
                     command.save()
                     job.status = Job.STATUS_RUNNING
@@ -77,7 +82,8 @@ def execute_job(job_id):
                     command.save()
             if command.cmd == Command.CMD_STOP:
                 if job.status == Job.STATUS_RUNNING or job.status == Job.STATUS_PAUSED:
-                    process.send_signal(signal.SIGKILL)
+                    zmap_process.send_signal(signal.SIGSTOP)
+                    zgrab_process.send_signal(signal.SIGSTOP)
                     command.status = Command.STATUS_DONE
                     command.save()
                     job.status = Job.STATUS_STOPPED
@@ -86,15 +92,20 @@ def execute_job(job_id):
                     exit_by_user = True
         try:
             status = get_current_status(status_path)
+            logger.info("zgrab status", zgrab_process.poll())
             if status:
                 job.update_execute_status(status)
                 job.save()
         except ValueError:
+            logger.info("zgrab status error", zgrab_process.poll())
             pass
-        time.sleep(1)
-        exit_code = process.poll()
+        time.sleep(2)
+        exit_code = zmap_process.poll()
+
     if exit_code == 0:
         logger.info("zmap return success code:%s, log path:%s", exit_code, log_path)
+        if zgrab_process.poll() is None:
+            zgrab_process.send_signal(signal.SIGKILL)
         job.status = Job.STATUS_DONE
         job.percent_complete = 100
         job.end_time = timezone.now()
@@ -102,6 +113,8 @@ def execute_job(job_id):
         job.save()
     elif not exit_by_user:
         logger.error("zmap return error code:%s, log path:%s", exit_code, log_path)
+        if zgrab_process.poll() is None:
+            zgrab_process.send_signal(signal.SIGKILL)
         job.status = Job.STATUS_ERROR
         job.end_time = timezone.now()
         job.save()
@@ -124,11 +137,11 @@ def start():
         time.sleep(1)
         running_jobs = Job.objects.filter(status=Job.STATUS_RUNNING)
         total_bandwidth = 0
-        for job in running_jobs:
-            total_bandwidth += job.bandwidth
-        if total_bandwidth >= settings.max_bandwidth:
-            logger.debug(u"Achieve maximum bandwidth:%sM", settings.max_bandwidth)
-            continue
+        # for job in running_jobs:
+        #     total_bandwidth += job.bandwidth
+        # if total_bandwidth >= settings.max_bandwidth:
+        #     logger.debug(u"Achieve maximum bandwidth:%sM", settings.max_bandwidth)
+        #     continue
         jobs = [x for x in Job.objects.filter(status=Job.STATUS_PENDING).order_by('-priority')]
         db.close_old_connections()
         for j in jobs:
@@ -232,3 +245,8 @@ def run_daemon_process(stdout='/dev/null', stderr=None, stdin='/dev/null',
     os.dup2(so.fileno(), sys.stdout.fileno())
     os.dup2(se.fileno(), sys.stderr.fileno())
     return pid
+
+
+if __name__ == '__main__':
+    # settings.configure()
+    start()

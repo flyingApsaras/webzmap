@@ -1,0 +1,74 @@
+.search-background {
+  background-image: url("./ics3.jpg");
+  background-repeat: no-repeat;
+  background-size: 100% auto;
+  height: 100vh;
+}
+.search-content {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: rgba(0,0,0,.8);
+
+  display: flex;
+  flex-direction: column;
+}
+.search-title {
+  width: 600px;
+  margin: 0 auto;
+  margin-bottom: 15px;
+  margin-top: 20%;
+
+  text-align: center;
+  color: white;
+
+  display: flex;
+  flex-direction: column;
+}
+.search-main-title {
+  line-height: 48px;
+}
+.yehei-font {
+  color: rgb(207, 207, 207);
+  font-size: 36px;
+  font-family: STXihei, "Microsoft Yahei";
+}
+
+.arial-font {
+  color: #858585;
+  font-size: 18px;
+  font-family: Tahoma, 'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;
+}
+
+.middle {
+  margin: 0 auto;
+}
+
+.search-input > input {
+  padding: 0px;
+  padding-left: 20px;
+  outline:0; 
+  /* 去除轮廓 */
+  width: 500px;
+  height: 48px;;
+  line-height: 24px;
+  font-size: 18px;
+  background-color: rgba(0, 0, 0, 0.8);
+  border:1px solid #858585;
+  border-right-width: 0px;
+  color: white;
+  /* box-sizing: border-box; */
+}
+.search-input  button {
+  box-sizing: border-box;
+  height: 50px;
+  width: 48px;
+  color: white;
+  padding: 0px;
+  border: none;
+  background-color: rgba(80, 80, 80, 1);
+  border-top-right-radius: 5px;
+  border-bottom-right-radius: 5px;
+}

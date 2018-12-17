@@ -172,3 +172,6 @@ LOGGING = {
         },
     }
 }
+
+redis_url = 'tcp://localhost:6379'
+zgrab2_path = '/home/ss/ss/webzmap/zgrab2'

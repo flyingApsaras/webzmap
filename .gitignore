@@ -10,3 +10,4 @@
 nohup.out
 static/upload
 workspace
+venv/

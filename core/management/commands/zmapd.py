@@ -22,3 +22,8 @@ class Command(BaseCommand):
             zmapd.restart()
         else:
             zmapd.status()
+
+
+if __name__ == '__main__':
+    c = Command()
+    c.handle(cmd='start')
