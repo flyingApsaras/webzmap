@@ -2,14 +2,20 @@ import React, { Component } from 'react';
 import {
   Input,
 } from 'antd';
+// import { withRouter } from 'react-router';
 import './Search.css';
+import RecordStore from './stores';
 
 const InputSearch = Input.Search;
 
+
 class Search extends Component {
-  handlerSearch = (value) => {
-    console.log(value)
+  handlerSearch = async (value) => {
+    await RecordStore.getRecords(value);
+    const { history } = this.props;
+    history.push('/records');
   };
+
   render() {
     return (
       <div className="search-background">

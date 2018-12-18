@@ -7,9 +7,9 @@ class Layout extends Component {
     return (
       <div className="layout">
         <Header />
-        
+
       </div>
-    )
+    );
   }
 }
 
